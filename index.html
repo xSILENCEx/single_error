@@ -187,12 +187,13 @@
     </div>
 
     <script>
-        const API_BASE = 'https://cstlqgprntjorlxzlpib.supabase.co/functions/v1';
-
         function getQueryParam(name) {
             const params = new URLSearchParams(window.location.search);
             return params.get(name);
         }
+
+        // API_BASE 从 URL 参数获取，支持动态配置
+        const API_BASE = getQueryParam('api') || 'https://cstlqgprntjorlxzlpib.supabase.co/functions/v1';
 
         function formatBytes(bytes) {
             if (!bytes) return '-';
