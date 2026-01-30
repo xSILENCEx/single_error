@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>错误日志详情</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .header {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 24px;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-icon {
+            font-size: 32px;
+        }
+        .header-title {
+            font-size: 20px;
+            font-weight: 600;
+        }
+        .header-subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+        .card {
+            background: white;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .section {
+            padding: 20px 24px;
+            border-bottom: 1px solid #eee;
+        }
+        .section:last-child {
+            border-bottom: none;
+        }
+        .section-title {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        .error-message {
+            background: #fff5f5;
+            border-left: 4px solid #e74c3c;
+            padding: 16px;
+            border-radius: 4px;
+            color: #c0392b;
+            font-weight: 500;
+            word-break: break-word;
+        }
+        .error-stack {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .info-label {
+            font-size: 12px;
+            color: #999;
+        }
+        .info-value {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+        }
+        .tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .tag-error {
+            background: #fee;
+            color: #c0392b;
+        }
+        .tag-info {
+            background: #e8f4fd;
+            color: #1976d2;
+        }
+        .tag-success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        .screenshot {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #eee;
+        }
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #eee;
+            border-top-color: #e74c3c;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .error-page {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .error-page-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+        .error-page-title {
+            font-size: 20px;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .error-page-desc {
+            color: #666;
+            font-size: 14px;
+        }
+        .custom-data {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+        }
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="app">
+            <div class="card">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <div>加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://cstlqgprntjorlxzlpib.supabase.co/functions/v1';
+
+        function getQueryParam(name) {
+            const params = new URLSearchParams(window.location.search);
+            return params.get(name);
+        }
+
+        function formatBytes(bytes) {
+            if (!bytes) return '-';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+            return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function renderError(message) {
+            return `
+                <div class="error-page">
+                    <div class="error-page-icon">😕</div>
+                    <div class="error-page-title">无法加载错误日志</div>
+                    <div class="error-page-desc">${escapeHtml(message)}</div>
+                </div>
+            `;
+        }
+
+        function renderData(data) {
+            const errorTypeMap = {
+                'crash': '崩溃',
+                'exception': '异常',
+                'anr': 'ANR',
+                'http': 'HTTP错误'
+            };
+
+            return `
+                <div class="header">
+                    <div class="header-icon">🚨</div>
+                    <div>
+                        <div class="header-title">${escapeHtml(data.app_name || data.package_name)}</div>
+                        <div class="header-subtitle">${escapeHtml(data.package_name)}</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="section">
+                        <div class="badge-row">
+                            ${data.error_type ? `<span class="tag tag-error">${escapeHtml(errorTypeMap[data.error_type] || data.error_type)}</span>` : ''}
+                            ${data.error_code ? `<span class="tag tag-info">${escapeHtml(data.error_code)}</span>` : ''}
+                            ${data.app_version ? `<span class="tag tag-info">v${escapeHtml(data.app_version)}${data.app_build_number ? ` (${escapeHtml(data.app_build_number)})` : ''}</span>` : ''}
+                        </div>
+                        <div class="error-message">${escapeHtml(data.error_message)}</div>
+                    </div>
+
+                    ${data.error_stack ? `
+                    <div class="section">
+                        <div class="section-title">错误堆栈</div>
+                        <div class="error-stack">${escapeHtml(data.error_stack)}</div>
+                    </div>
+                    ` : ''}
+
+                    <div class="section">
+                        <div class="section-title">设备信息</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">设备</span>
+                                <span class="info-value">${escapeHtml([data.device_brand, data.device_model].filter(Boolean).join(' ') || '-')}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">系统</span>
+                                <span class="info-value">${escapeHtml([data.os_name, data.os_version].filter(Boolean).join(' ') || '-')}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">屏幕</span>
+                                <span class="info-value">${data.screen_width && data.screen_height ? `${data.screen_width} × ${data.screen_height}` : '-'}${data.orientation ? ` (${data.orientation})` : ''}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">SDK</span>
+                                <span class="info-value">${escapeHtml(data.sdk_version || '-')}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">环境信息</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">网络</span>
+                                <span class="info-value">${escapeHtml(data.network_type?.toUpperCase() || '-')}${data.carrier ? ` (${escapeHtml(data.carrier)})` : ''}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">地区</span>
+                                <span class="info-value">${escapeHtml([data.locale, data.country].filter(Boolean).join(' / ') || '-')}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">时区</span>
+                                <span class="info-value">${escapeHtml(data.timezone || '-')}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">IP</span>
+                                <span class="info-value">${escapeHtml(data.client_ip || '-')}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">设备状态</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">电池</span>
+                                <span class="info-value">${data.battery_level !== null ? `${data.battery_level}%${data.is_charging ? ' ⚡充电中' : ''}` : '-'}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">可用内存</span>
+                                <span class="info-value">${formatBytes(data.free_memory)}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">可用存储</span>
+                                <span class="info-value">${formatBytes(data.free_storage)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    ${data.user_id || data.user_name ? `
+                    <div class="section">
+                        <div class="section-title">用户信息</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">用户</span>
+                                <span class="info-value">${escapeHtml(data.user_name || '-')}${data.user_id ? ` (${escapeHtml(data.user_id)})` : ''}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${data.page_name || data.action ? `
+                    <div class="section">
+                        <div class="section-title">触发上下文</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">页面</span>
+                                <span class="info-value">${escapeHtml(data.page_name || '-')}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">动作</span>
+                                <span class="info-value">${escapeHtml(data.action || '-')}</span>
+                            </div>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    ${data.custom_data ? `
+                    <div class="section">
+                        <div class="section-title">自定义数据</div>
+                        <div class="custom-data">${escapeHtml(JSON.stringify(data.custom_data, null, 2))}</div>
+                    </div>
+                    ` : ''}
+
+                    ${data.screenshot_url ? `
+                    <div class="section">
+                        <div class="section-title">截图</div>
+                        <img class="screenshot" src="${escapeHtml(data.screenshot_url)}" alt="错误截图" />
+                    </div>
+                    ` : ''}
+
+                    <div class="section">
+                        <div class="section-title">时间信息</div>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">上报时间</span>
+                                <span class="info-value">${formatDate(data.created_at)}</span>
+                            </div>
+                            ${data.client_timestamp ? `
+                            <div class="info-item">
+                                <span class="info-label">客户端时间</span>
+                                <span class="info-value">${formatDate(data.client_timestamp)}</span>
+                            </div>
+                            ` : ''}
+                            <div class="info-item">
+                                <span class="info-label">日志ID</span>
+                                <span class="info-value" style="font-size:12px;color:#999;">${escapeHtml(data.id)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function loadErrorLog() {
+            const id = getQueryParam('id');
+            const app = document.getElementById('app');
+
+            if (!id) {
+                app.innerHTML = renderError('缺少错误日志ID参数，请在URL中添加 ?id=xxx');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/get-error-log?id=${encodeURIComponent(id)}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    app.innerHTML = renderError(result.error || '加载失败');
+                    return;
+                }
+
+                app.innerHTML = renderData(result.data);
+                document.title = `${result.data.app_name || result.data.package_name} - 错误日志`;
+
+            } catch (e) {
+                app.innerHTML = renderError('网络请求失败: ' + e.message);
+            }
+        }
+
+        loadErrorLog();
+    </script>
+</body>
+</html>
